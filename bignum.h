@@ -42,6 +42,9 @@ public:
     BigNum operator*(int);
     BigNum operator*(double);
 
+    void shiftDecimalRight(size_t positions);
+    void shiftDecimalLeft(size_t positions);
+    void normalize();
     BigNum operator/(BigNum& other);
     BigNum operator/(int);
     BigNum operator/(double);

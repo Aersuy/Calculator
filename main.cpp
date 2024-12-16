@@ -3,10 +3,10 @@
 #include <QApplication>
 
 int main(int argc, char *argv[])
-{   BigNum f("-11.25");
-    BigNum x(-10.2);
-    BigNum y = f*x;
-    y.print();
+{   BigNum f("11.15");
+    BigNum b(10);
+    BigNum c = f/b;
+    c.print();
 
     QApplication a(argc, argv);
     MainWindow w;

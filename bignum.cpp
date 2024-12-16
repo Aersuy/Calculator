@@ -1,5 +1,5 @@
 #include "bignum.h"
-
+constexpr int MAX_PRECISION = 20;
 BigNum::BigNum()
 {
 
@@ -77,6 +77,10 @@ BigNum::BigNum(double inputFloat)
             m_frac.push_back(digit - '0');
         }
     }
+    while (!m_frac.empty() && m_frac.back() == 0) {
+        m_frac.pop_back();
+    }
+
 }
 BigNum::BigNum(BigNum& other)
 {
@@ -108,7 +112,7 @@ BigNum BigNum::operator+(BigNum& other)
     {
         BigNum temp = other;
         temp.m_sign = !temp.m_sign;
-       // return *this - temp; // fa scaderea
+        return *this - temp; // fa scaderea
     }
     int fractSize1, fractSize2;
     fractSize1 = this->m_frac.size();
@@ -162,6 +166,98 @@ BigNum BigNum::operator+(double other)
 {
     BigNum otherBigNum(other);
     return (*this) + otherBigNum;
+}
+std::vector<int> subtractVectors(const std::vector<int>& larger, const std::vector<int>& smaller,bool& mainBorrow) {
+    std::vector<int> result(larger.size(), 0);
+    int borrow = 0;
+
+    for (int i = std::max(larger.size(),smaller.size()) - 1; i >= 0; i--) {
+        int largerDigit = larger[i];
+        int smallerDigit = (i < smaller.size()) ? smaller[i] : 0;
+
+        int diff = largerDigit - smallerDigit - borrow;
+        if (diff < 0) {
+            diff += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+
+        result[i] = diff;
+    }
+    mainBorrow = borrow;
+    // Remove leading zeros
+    while (!result.empty() && result.back() == 0) {
+        result.pop_back();
+    }
+
+    return result;
+}
+
+BigNum BigNum::operator-(BigNum& other) {
+    BigNum result;
+
+    // Handle signs
+    if (m_sign != other.m_sign) {
+        // Subtracting a negative is the same as adding
+        BigNum temp = other;
+        temp.m_sign = !temp.m_sign;
+        return *this + temp;
+    }
+
+    // Determine which is larger to handle subtraction order
+    bool resultSign = true; // Assume result is positive
+    if (*this < other) {
+        resultSign = false; // Result will be negative
+
+    }
+     bool b;
+    // Subtract fractional parts
+    if (!m_frac.empty() || !other.m_frac.empty()) {
+        // Ensure both fractions are the same length
+        size_t maxFracLen = std::max(m_frac.size(), other.m_frac.size());
+        std::vector<int> largerFrac = m_frac;
+        std::vector<int> smallerFrac = other.m_frac;
+
+        largerFrac.resize(maxFracLen, 0);
+        smallerFrac.resize(maxFracLen, 0);
+
+        // Subtract the fractional parts
+        std::vector<int> fracResult = subtractVectors(largerFrac, smallerFrac,b);
+
+        // Handle potential borrowing from the integer part
+        if (b) {
+            if (!m_num.empty()) {
+                m_num[m_num.size() - 1] -= 1;
+            }
+        }
+
+        result.m_frac = fracResult;
+    }
+
+    // Subtract integer parts
+    result.m_num = subtractVectors(m_num, other.m_num,b);
+    if(result.m_num.empty())
+    {
+        result.m_num.push_back(0);
+    }
+    while (result.m_num.size() > 1 && result.m_num.back() == 0) {
+        result.m_num.pop_back(); // Remove the last digit if it's zero
+    }
+
+
+    result.m_sign = resultSign;
+    return result;
+}
+BigNum BigNum::operator-(int other)
+{
+    BigNum otherBigNum(other);
+    return (*this) - otherBigNum;
+}
+BigNum BigNum::operator-(double other)
+{
+    BigNum otherBigNum(other);
+    return (*this) - otherBigNum;
 }
 bool BigNum::operator==(BigNum& other)
 {
@@ -445,6 +541,121 @@ void BigNum::fromBinary(std::string& binary) {
         this->m_frac.pop_back();
     }
 }
+BigNum BigNum::operator/(BigNum& other) {
+    // Check for division by zero
+    BigNum zero("0");
+    if (other ==zero) {
+        throw std::invalid_argument("Division by zero");
+    }
+
+    // Handle signs
+    BigNum dividend = *this;
+    BigNum divisor = other;
+    BigNum result;
+    result.m_sign = (m_sign != other.m_sign); // Result is negative if signs are different
+    dividend.m_sign = false;
+    divisor.m_sign = false;
+
+    // Normalize decimal places by shifting
+    int scale = std::max(m_frac.size(), other.m_frac.size());
+    dividend.shiftDecimalLeft(scale);
+    divisor.shiftDecimalLeft(scale);
+
+    // Perform integer division
+    BigNum quotient("0");
+    BigNum remainder("0");
+
+    for (int i = dividend.m_num.size() - 1; i >= 0; --i) {
+        remainder.shiftDecimalLeft(1); // Make room for the next digit
+        remainder.m_num[0] = dividend.m_num[i];
+
+        // Find the largest digit for the quotient
+        int digit = 0;
+        while (remainder > divisor || remainder == divisor) {
+            remainder = remainder - divisor;
+            digit++;
+        }
+
+        quotient.m_num.push_back(digit);
+    }
+
+    // Reverse quotient digits to get the correct order
+    std::reverse(quotient.m_num.begin(), quotient.m_num.end());
+
+    // Handle fractional part (if needed)
+    BigNum fractionalPart("0");
+    remainder.shiftDecimalLeft(scale);
+
+    for (size_t i = 0; i < MAX_PRECISION; ++i) {
+        remainder.shiftDecimalLeft(1); // Multiply remainder by 10
+        int digit = 0;
+        while (remainder > divisor || remainder == divisor) {
+            remainder = remainder - divisor;
+            digit++;
+        }
+
+        fractionalPart.m_frac.push_back(digit);
+
+        if (remainder == zero) {
+            break; // No more fractional part
+        }
+    }
+
+    // Combine integer and fractional parts
+    result.m_num = quotient.m_num;
+    result.m_frac = fractionalPart.m_frac;
+    result.normalize(); // Ensure no leading/trailing zeros
+
+    return result;
+}
+void BigNum::shiftDecimalRight(size_t positions) {
+    while (positions > 0 && !m_frac.empty()) {
+        // Move the first fractional digit to the integer part
+        m_num.insert(m_num.begin(), m_frac.front());
+        m_frac.erase(m_frac.begin());
+        positions--;
+    }
+
+    // If there are still positions left, pad with zeros in the integer part
+    while (positions > 0) {
+        m_num.insert(m_num.begin(), 0);
+        positions--;
+    }
+    normalize();
+}
+void BigNum::shiftDecimalLeft(size_t positions) {
+    while (positions > 0 && !m_num.empty()) {
+        // Move the last integer digit to the fractional part
+        m_frac.insert(m_frac.begin(), m_num.back());
+        m_num.pop_back();
+        positions--;
+    }
+    // If there are still positions left, pad with zeros in the fractional part
+    while (positions > 0) {
+        m_frac.insert(m_frac.begin(), 0);
+        positions--;
+    }
+    normalize();
+}
+void BigNum::normalize() {
+    // Remove leading zeros from the integer part
+    while (m_num.size() > 1 && m_num.back() == 0) {
+        m_num.pop_back();
+    }
+
+    // If the integer part becomes empty, add a single zero
+    if (m_num.empty()) {
+        m_num.push_back(0);
+    }
+
+    // Remove trailing zeros from the fractional part
+    while (!m_frac.empty() && m_frac.back() == 0) {
+        m_frac.pop_back();
+    }
+}
+
+
+
 
 
 
